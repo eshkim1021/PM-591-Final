@@ -100,8 +100,7 @@ data_tsk <- makeClassifTask(id = "Paitent Mortality", data = refine_data, target
 ```{r}
 #make log learner 
 data_learn_log <- makeLearner("classif.logreg",
-                              predict.type = "prob",
-                              fix.factors.prediction = TRUE)
+                              predict.type = "prob")
 
 holdout_desc <- makeResampleDesc(method = "Holdout", stratify = TRUE)
 
@@ -123,26 +122,54 @@ log_forward <- selectFeatures(learner = data_learn_log,
                               control = ctrl_forward,
                               show.info = TRUE)
 
-analyzeFeatSelResult(log_forward, reduce = TRUE)
+#only Risk of Mortality found to be inmportant, but will include other demographic factors 
+analyzeFeatSelResult(log_forward)
 
-forward_log_data <- refine_data %>% select("DIED","APRDRG_Risk_Mortality","RACE","LOS")
+#Risk of Mortality, Race, and Length of Stay 
+forward_log_data <- refine_data %>% select("DIED","APRDRG_Risk_Mortality","RACE")
 
+#create new task for the new dataset 
 log_for_tsk <- makeClassifTask(id = "Paitent Mortality", data = forward_log_data,
                                target = "DIED")
 
-crossval(data_learn_log,log_for_tsk,iters = 10L, stratify = TRUE, measures = auc)
+log_for_train <- train(data_learn_log,log_for_tsk, subset = log_train)
+
+log_for_predict <- predict(log_for_train, task = log_for_tsk, subset = log_test)
+
+calculateROCMeasures(log_for_predict)
+
 ```
 
 ```{r}
+library('pROC')
+data_glm <- glm(DIED~APRDRG_Risk_Mortality + RACE, family = 'binomial',data = forward_log_data[log_train,])
 
-data_train_log <- train(data_learn_log, data_tsk,subset = log_train)
+pred_glm <- factor(predict(data_glm,newdata = forward_log_data[log_test, ],type = 'response') >0.5)
 
-log_predict <- predict(data_train_log,task = data_tsk,subset = log_test)
 
-log_predict
+predict_prob_train <- predict(data_glm, newdata = forward_log_data[log_train, ])
+predict_prob_test <- predict(data_glm,newdata = forward_log_data[log_test, ])
 
-performance(log_predict,measures = list(mmce,acc))
+roc_glm_train <- roc(forward_log_data[log_train,]$DIED,predict_prob_train, ci = TRUE, of = 'auc')
+roc_glm_test <- roc(forward_log_data[log_test, ]$DIED,predict_prob_test, ci = TRUE, of = 'auc')
 ```
+
+```{r}
+auc(roc_glm_train)
+ci(roc_glm_train)
+
+plot(roc_glm_train, lwd = 4, col = 'red4',cex.axis = 1.3, cex.lab = 1.3)
+```
+
+```{r}
+auc(roc_glm_test)
+ci(roc_glm_test)
+#have the auc of the test data 
+plot(roc_glm_test,lwd = 4, col = 'red4', cex.axis = 1.3, cex.lab = 1.3)
+title(main = "ROC Curve for Patient Mortality (Test Data)")
+
+```
+
 
 ```{r}
 #random forest 
