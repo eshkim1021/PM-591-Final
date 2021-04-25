@@ -9,23 +9,108 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+library(tidyverse)
+library(data.table)
+library(mlr)
+library(dplyr)
+library(randomForest)
+
 data <- read.csv("NIS2012-200k.csv", header = TRUE, stringsAsFactors = TRUE)
 
+data.dt <- data.frame(data)
 ```
 <br>
 The final project requires that you build a predictive model based on real data -- your own or the provided National Impatient data-- and a paper-style short report (2-3 of pages long) describing the problem, the approach(es) taken, and the results. Below is a *guideline* structure for the report. You should use the section breakdown into intro, methods, results, conclusions/discussion but don't have to necessarily include every element listed below within those sections. And you may want to include elements not listed below. Use your judgement.
 
 ### Introduction
+
+  The National Impatient Sample (NIS) data, collected by the Healthcare Cost and Utilization Project (HCUP), is the largest publicly available dataset that contains information on inpatient healthcare in hospitals throughout the United States. The NIS is used by policymakers and health officials to make national estimates of healthcare utilization, and observe key features of inpatient care. The NIS was first started in 1998 by the Healthcare Cost and Utilization Project, and contains information such as patient demographics, classification of diseases, total hospital bill, length of stay, and many other features that characterize hospital care. The goal of this assignment will be to build a model to predict impatient mortality an determine what factors contribute a increased risk of death during hospitalization. 
+
+  The data that will be used in this assignment consists of a random subset of 200,000 patients from the 2012 National Impatient Sample. The data was taken from the Healthcare Cost and Ultilization Project (HCUP), which is the largest collection of hospital care data in the United States. The data was taken from discharge records from all hospitals that are participating with the HCUP, and use state guidelines to help identify the hospitals that qualify for the data collection process. 47 states and the District of Columbia participate in the NIS, and data is available for hospitals in those states. The outcome of interest is the inpatient mortality, of whether the patient died during the period of hospitalization. Features such as patient demographic, severity of disease, risk of mortality, and comorbidities were incorpated to determine if a patient was likely to die during hospitalization. This can be used to identify features that increase the risk of patient mortality in hospitals and seek to prevent such deaths in the future. 
+
 1. Describe the problem explaining in particular why prediction is of primary interest (inference could also be of interest but there has to be a good reason for wanting to predict a particular outcome)
 
 2. Describe the data (e.g. data source, data collection, outcome of interest, available features, sample size, missing data, etc.)
 
 ### Methods
+
+First the relevant features to the outcome of interest was sorted out from the 175 original features that were present. 
+
+```{r}
+names <- c("DIED", "APRDRG_Risk_Mortality","AGE","AGE_NEONATE","APRDRG_Severity","CM_AIDS","CM_ALCOHOL","CM_ANEMDEF","CM_ARTH","CM_BLDLOSS","CM_CHF","CM_CHRNLUNG","CM_COAG","CM_DEPRESS","CM_DM", "CM_DMCX","CM_DRUG","CM_HTN_C","CM_HYPOTHY","CM_LIVER","CM_LYMPH","CM_LYTES","CM_METS","CM_NEURO","CM_OBESE","CM_PARA","CM_PERIVASC","CM_PSYCH","CM_PULMCIRC","CM_RENLFAIL","CM_TUMOR","CM_ULCER","CM_VALVE","CM_WGHTLOSS","FEMALE","HOSP_DIVISION","LOS","NCHRONIC","NDX","NEOMAT","PAY1","RACE","TRAN_IN","TRAN_OUT","YEAR","ZIPINC_QRTL","ORPROC") #list the features that will be included 
+
+
+refine_data <- data.dt %>% select(names)
+```
+
+Then then data was then reevaluated and factors were added when necessary. 
+
+```{r}
+refine_data$APRDRG_Risk_Mortality <- factor(refine_data$APRDRG_Risk_Mortality,
+                                            levels = c(0,1,2,3,4), 
+                                            labels = c("Not specified","Minor Likelihood","Moderate Likelihood","Major Likelihood","Extreme Likelihood"))
+
+
+refine_data$AGE_NEONATE <- factor(refine_data$AGE_NEONATE,
+                                  levels = c(0,1),
+                                  labels = c("Non-neonatal Age","Neonatal Age"))
+
+refine_data$APRDRG_Severity <- factor(refine_data$APRDRG_Severity,
+                                      levels = c(0,1,2,3,4),
+                                      labels = c("Not specified","Minor Loss of Function","Moderate Loss of Function","Major Loss of Function","Extreme Loss of Function"))
+
+factor_names <- c("CM_AIDS","CM_ALCOHOL","CM_ANEMDEF","CM_ARTH","CM_BLDLOSS","CM_CHF","CM_CHRNLUNG","CM_COAG","CM_DEPRESS","CM_DM", "CM_DMCX","CM_DRUG","CM_HTN_C","CM_HYPOTHY","CM_LIVER","CM_LYMPH","CM_LYTES","CM_METS","CM_NEURO","CM_OBESE","CM_PARA","CM_PERIVASC","CM_PSYCH","CM_PULMCIRC","CM_RENLFAIL","CM_TUMOR","CM_ULCER","CM_VALVE","CM_WGHTLOSS","FEMALE","HOSP_DIVISION","NEOMAT")
+
+refine_data[factor_names] <- lapply(refine_data[factor_names],factor)
+
+refine_data$PAY1 <- factor(refine_data$PAY1,
+                           levels = c(1,2,3,4,5,6),
+                           labels = c("Medicare","Medicaid","Private","Self-Pay","No Charge","Other"))
+
+refine_data$RACE <- factor(refine_data$RACE,
+                           levels = c(1,2,3,4,5,6),
+                           labels = c("White","Black","Hispanic","Asian","Native American","Other"))
+
+summary(refine_data)
+
+```
+
 1. Describe any data pre-processing steps (e.g. cleaning, recoding, variable transformation, dealing with missing data, selection of features to be included in your models, etc)
 
 2. Briefly describe the Machine learning methods you will be using and why they are appropriate for your data (e.g. given the sample size and dimensionality of your training data, are you more concerned about bias or variance?)  You should try and compare at least 3 distinct appropriate methods.
 
+  A logistic regression model can be used to predict patient mortality. 
+  
+  Feature Selection will be used to 
+
 3. Describe how you are splitting the data into testing and training and any resampling strategy used for comparing methods, tuning parameters, and/or model/feature selection.
+
+```{r}
+#make task for log reg 
+data_tsk <- makeClassifTask(id = "Paitent Mortality", data = refine_data, target = "DIED")
+
+#make log learner 
+data_learn_log <- makeLearner("classif.", predict.type = "prob",
+                              fix.factors.prediction = TRUE)
+
+holdout_desc <- makeResampleDesc(method = "Holdout", stratify = TRUE)
+
+log_split <- makeResampleInstance(holdout_desc,log_tsk, split = 0.7)
+
+log_train <- log_split$train.inds[[1]];log_test <- log_split$test.inds[[1]]
+```
+
+```{r}
+#random forest 
+split_desc <- makeResampleDesc(method = "Holdout",stratify = TRUE)
+
+set.seed(101)
+split <- makeResampleInstance(split_desc,data_tsk,split = 0.7)
+
+rf_train <- split$train.inds[[1]];rf_test <- split$test.inds[[1]]
+
+data_rf <- randomForest(DIED ~., data = refine_data[rf_train, ],)
+```
 
 4. If applicabble, describe any model/feature selection used. 
 
@@ -41,7 +126,8 @@ The final project requires that you build a predictive model based on real data 
 ### Conclusions/discussion
 Discuss whether and why the prediction model(s) developed achieved sufficient high accuracy to be usefully deployed to predict new observations.
 
-
 #Additional notes for those using the NIS data
-The data provided consists of a random subset of 200,000 patients from 2012 from the National Impatient Sample (NIS) data collected by the Healthcare Cost and Utilization Project (HCUP). You can find information on the HCUP database at <https://www.hcup-us.ahrq.gov>. You can choose to develop a model to predict death during hospitalization also known as impatient mortality (variable DIED in the dataset) or hospital length of stay (variable LOS in the dataset). For extra credit, you can also choose to predict both. The dataset has a relatively large number of variables. In the provided data dictionary I preselected variables (highlighted) which are both availabe (not all variables in the dictionary are available for 2012) which might be relevant for predicting impatient mortality and/or hospital length of stay. Based on their description and additional info from the HCUP site you should choose which variables among the preselected ones you will consider as features/predictors. You don't have to use them all. There maybe variables that are redundant (capture pretty much the same info others already capture), variables that are too complex (e.g. categorical with way too many levels), or that based on your judgment are unlikely to be important. Be aware that the data is real and has not been pre-processed in any way and you will have to do some data cleaning. For example, you should carefully check the variables you consider as possible predictors for correctness of type (e.g. many numeric variables will be read in as factor variables when you use ``read.csv``), outliers, missing observations, nonsensical values, etc. 
+The data provided consists of a random subset of 200,000 patients from 2012 from the National Impatient Sample (NIS) data collected by the Healthcare Cost and Utilization Project (HCUP). You can find information on the HCUP database at <https://www.hcup-us.ahrq.gov>. You can choose to develop a model to predict death during hospitalization also known as impatient mortality (variable DIED in the dataset) or hospital length of stay (variable LOS in the dataset). For extra credit, you can also choose to predict both. The dataset has a relatively large number of variables. In the provided data dictionary I preselected variables (highlighted) which are both availabe (not all variables in the dictionary are available for 2012) which might be relevant for predicting impatient mortality and/or hospital length of stay. Based on their description and additional info from the HCUP site you should choose which variables among the preselected ones you will consider as features/predictors. You don't have to use them all. There maybe variables that are redundant (capture pretty much the same info others already capture), variables that are too complex (e.g. categorical with way too many levels), or that based on your judgment are unlikely to be important. Be aware that the data is real and has not been pre-processed in any way and you will have to do some data cleaning. For example, you should carefully check the variables you consider as possible predictors for correctness of type (e.g. many numeric variables will be read in as factor variables when you use ``read.csv``), outliers, missing observations, nonsensical values, etc.
+
+
 
