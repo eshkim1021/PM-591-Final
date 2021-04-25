@@ -138,6 +138,11 @@ log_for_predict <- predict(log_for_train, task = log_for_tsk, subset = log_test)
 
 calculateROCMeasures(log_for_predict)
 
+performance(log_for_predict, measures = list(mmce,acc))
+
+for_log_crossval <- crossval(data_learn_log,log_for_tsk,iters = 10L, stratify = TRUE, measures = mmce)
+
+for_log_crossval$aggr
 ```
 
 ```{r}
