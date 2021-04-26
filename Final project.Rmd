@@ -160,7 +160,7 @@ Forward selection was used to determine the features that will be included in th
 
 ```{r}
 library('pROC')
-data_glm <- glm(DIED~APRDRG_Risk_Mortality + RACE, family = 'binomial',data = forward_log_data[log_train,])
+data_glm <- glm(DIED~APRDRG_Risk_Mortality + RACE + LOS, family = 'binomial',data = forward_log_data[log_train,])
 
 pred_glm <- factor(predict(data_glm,newdata = forward_log_data[log_test, ],type = 'response') >0.5)
 
@@ -200,6 +200,24 @@ rf_roc_test <- roc(refine_data[log_test, ]$DIED,rf_predict_test[,1])
 
 auc(rf_roc_test)
 ci(rf_roc_test)
+```
+
+### __Boosting__
+
+
+```{r}
+library(glmnet)
+
+x <- refine_data$DIED
+y <- model.matrix(refine_data$DIED~., data = refine_data[,-1])
+
+learn_CV_lasso <- makeLearner("classif.cvglmnet",
+                              fix.factors.prediction = TRUE,
+                              predict.type ="prob",
+                              alpha = 1,
+                              type.measure = 'auc')
+
+data_CV_lasso_train <- train(learn_CV_lasso, task = data_tsk,subset = log_train) 
 ```
 
 ```{r}
@@ -246,18 +264,6 @@ title(main = "ROC Curve for Patient Mortality (Test Data)")
 
 ```
 
-
-```{r}
-#random forest 
-split_desc <- makeResampleDesc(method = "Holdout",stratify = TRUE)
-
-set.seed(101)
-split <- makeResampleInstance(split_desc,data_tsk,split = 0.7)
-
-rf_train <- split$train.inds[[1]];rf_test <- split$test.inds[[1]]
-
-rpart(DIED ~., data = refine_data[rf_train, ], method = "class",control = list(minsplit = 15,minbucket = 5, cp  = 0))
-```
 
 4. If applicabble, describe any model/feature selection used. 
 
