@@ -10,7 +10,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r, include = FALSE}
 library(tidyverse)
 library(data.table)
 library(mlr)
@@ -23,8 +23,6 @@ data <- read.csv("NIS2012-200k.csv", header = TRUE, stringsAsFactors = TRUE)
 data.dt <- data.frame(data)
 
 ```
-<br>
-The final project requires that you build a predictive model based on real data -- your own or the provided National Impatient data-- and a paper-style short report (2-3 of pages long) describing the problem, the approach(es) taken, and the results. Below is a *guideline* structure for the report. You should use the section breakdown into intro, methods, results, conclusions/discussion but don't have to necessarily include every element listed below within those sections. And you may want to include elements not listed below. Use your judgement.
 
 ### Introduction
 
@@ -156,9 +154,9 @@ for_log_crossval$aggr
 
 I will be comparing 3 different methods to build a predictive model for patient mortality. The first will be logistic regression model. The logistic regression model is one of the most commonly used and basic binary classifiers. Because the desired goal is to determine if a patient died during their hospitalization, the outcome is a binary outcome.  Given the extremely large sample size of the data with around 200,000 observations, both the training and testing sets will be large enough to ensure an accurate prediction model. 
 
-Forward selection was used to determine the features that will be included in the logistic regression model. According to the forward selection process, only the __APRDRG_Risk_Mortality__, a factor variable that characterizes the risk of patient mortality, was determined to be significant in the data. However, the race variable was also included to determine the effect of patient demographics on mortality. There will only be a couple of features included in the actual logistic prediction model, therefore the model will be a simpler one indicating that the model will have a higher bias. However, the large sample size of the data and the use of cross validation will be used to determine the accuracy of the results. 
+Forward selection was used to determine the features that will be included in the logistic regression model. According to the forward selection process, only the __APRDRG_Risk_Mortality__, a factor variable that characterizes the risk of patient mortality, was determined to be significant in the data. However, the race variable was also included to determine the effect of patient demographics on mortality. There will only be a couple of features included in the actual logistic prediction model, therefore the model will be a simpler one indicating that the model will have a higher bias. However, the large sample size of the data and the use of cross validation will be used to determine the accuracy of the results. I will be using the misclassification error and the AUC as performance metrics to determine the effectiveness of the logistic model and compare it to other models that I wiil be using. 
 
-```{r}
+```{r,include = FALSE}
 library('pROC')
 data_glm <- glm(DIED~APRDRG_Risk_Mortality + RACE + LOS, family = 'binomial',data = forward_log_data[log_train,])
 
@@ -172,11 +170,12 @@ roc_glm_train <- roc(forward_log_data[log_train,]$DIED,predict_prob_train, ci = 
 roc_glm_test <- roc(forward_log_data[log_test, ]$DIED,predict_prob_test, ci = TRUE, of = 'auc')
 ```
 
+
 ### __Balanced Random Forests__
 
-The data itself is very unbalanced, with 184,598 patients that were successfully discharged compared to the 3,412 that died in the hospital. This could lead to an optimistically low misclassification error. Therefore, balanced random forests will be used to help rebalance the two binary outcomes. 
+The data itself is very unbalanced, with 184,598 patients that were successfully discharged compared to the 3,412 that died in the hospital. This could lead to an optimistically low misclassification error. Therefore, balanced random forests will be used to help balance the two binary outcomes. 
 
-```{r}
+```{r,include = FALSE}
 library(randomForest)
 
 
@@ -202,14 +201,16 @@ auc(rf_roc_test)
 ci(rf_roc_test)
 ```
 
-### __Boosting__
+### __Lasso Regression__
 
 
-```{r}
+```{r,include = FALSE}
 library(glmnet)
 
 x <- refine_data$DIED
-y <- model.matrix(refine_data$DIED~., data = refine_data[,-1])
+y <- model.matrix(refine_data$DIED~., data = refine_data)[,-1]
+
+#dat_CVlasso <- cv.glmnet(x,y,family = "gaussian",alpha = 1)
 
 learn_CV_lasso <- makeLearner("classif.cvglmnet",
                               fix.factors.prediction = TRUE,
@@ -218,51 +219,64 @@ learn_CV_lasso <- makeLearner("classif.cvglmnet",
                               type.measure = 'auc')
 
 data_CV_lasso_train <- train(learn_CV_lasso, task = data_tsk,subset = log_train) 
+
+auc_train <- max(data_CV_lasso_train$learner.model$cvm)
+ 
+lambda_min <- data_CV_lasso_train$learner.model$lambda.min
+
+data_CV_lasso_min_lnr<- makeLearner("classif.glmnet",
+                                    fix.factors.prediction = TRUE,
+                                    predict.type = "prob",
+                                    alpha = 1,
+                                    lambda = lambda_min)
+
+
 ```
 
-```{r}
 
-plot(rf_roc_train, lwd = 4, col = 'red4',cex.axis = 1.3, cex.lab = 1.3)
-plot(rf_roc_test,lwd = 4, col = 'blue4', cex.axis = 1.3, cex.lab = 1.3)
 
-```
-
-```{r}
-varImpPlot(data_rf, cex = 0.7, pt.cex = 1.2, n.var = 20, main = "", pch = 16, col = 'red4')
-
-```
+### Results
+1. Present key summaries (table and/or plots, but plots preferred when both available) of your data (e.g. class frequencies if a classification problem)
 
 
 
-```{r}
-library('pROC')
-data_glm <- glm(DIED~APRDRG_Risk_Mortality + RACE, family = 'binomial',data = forward_log_data[log_train,])
+2. Report training, validation/cross-validation, and test errors. Present cross-validation plots for tuning parameters if available. Report variable importance (e.g. p-values, model coefficients, Random forest and boosting variable importance).
 
-pred_glm <- factor(predict(data_glm,newdata = forward_log_data[log_test, ],type = 'response') >0.5)
+### __Logistic Regression__
 
-
-predict_prob_train <- predict(data_glm, newdata = forward_log_data[log_train, ])
-predict_prob_test <- predict(data_glm,newdata = forward_log_data[log_test, ])
-
-roc_glm_train <- roc(forward_log_data[log_train,]$DIED,predict_prob_train, ci = TRUE, of = 'auc')
-roc_glm_test <- roc(forward_log_data[log_test, ]$DIED,predict_prob_test, ci = TRUE, of = 'auc')
-```
-
-```{r}
+```{r, echo = FALSE}
 auc(roc_glm_train)
 ci(roc_glm_train)
 
-plot(roc_glm_train, lwd = 4, col = 'red4',cex.axis = 1.3, cex.lab = 1.3)
-```
-
-```{r}
 auc(roc_glm_test)
 ci(roc_glm_test)
-#have the auc of the test data 
-plot(roc_glm_test,lwd = 4, col = 'red4', cex.axis = 1.3, cex.lab = 1.3)
-title(main = "ROC Curve for Patient Mortality (Test Data)")
+```
+
+```{r, echo = FALSE}
+plot(roc_glm_train, lty = 2, lwd = 2, col = 'red4',cex.axis = 1.3, cex.lab = 1.3)
+lines(roc_glm_test,lty = 2, lwd = 2, col = 'blue4', cex.axis = 1.3, cex.lab = 1.3)
+legend("bottomright", legend = c("Train","Test"), col = c('red4','blue4'),lty = 2)
+title(main = "ROC Curve for Patient Mortality (Logistic Regression)")
+```
+
+
+
+
+### __Balanced Random Forests__: 
+
+```{r, echo = FALSE}
+plot(rf_roc_train,lwd = 2, col = 'red4',cex.axis = 1.3, cex.lab = 1.3)
+lines(rf_roc_test, lwd = 2, col = 'blue4', cex.axis = 1.3, cex.lab = 1.3)
+legend("bottomright", legend = c("Train","Test"), col = c('red4','blue4'),lty = 1)
+title(main = "ROC Curve for Patient Mortality (Balanced Random Forest)")
+```
+
+```{r, echo = FALSE}
+varImpPlot(data_rf, cex = 0.7, pt.cex = 1.2, n.var = 20, pch = 16, col = 'red4', main = "Variable Importance for Patient Mortality")
 
 ```
+
+
 
 
 4. If applicabble, describe any model/feature selection used. 
@@ -271,12 +285,6 @@ title(main = "ROC Curve for Patient Mortality (Test Data)")
 
 5. Describe what performance metric(s) you will be using and why.
 
-### Results
-1. Present key summaries (table and/or plots, but plots prefered when both available) of your data (e.g. class frequencies if a classification problem)
-
-
-
-2. Report training, validation/cross-validation, and test errors. Present cross-validation plots for tuning parameters if available. Report variable importance (e.g. p-values, model coefficients, Random forest and boosting variable importance).
 
 ### Conclusions/discussion
 Discuss whether and why the prediction model(s) developed achieved sufficient high accuracy to be usefully deployed to predict new observations.
