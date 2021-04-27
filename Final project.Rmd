@@ -24,17 +24,14 @@ data.dt <- data.frame(data)
 
 ```
 
-### Introduction
+## __Introduction__
 
   The National Impatient Sample (NIS) data, collected by the Healthcare Cost and Utilization Project (HCUP), is the largest publicly available dataset that contains information on inpatient healthcare in hospitals throughout the United States. The NIS is used by policymakers and health officials to make national estimates of healthcare utilization, and observe key features of inpatient care. The NIS was first started in 1998 by the Healthcare Cost and Utilization Project, and contains information such as patient demographics, classification of diseases, total hospital bill, length of stay, and many other features that characterize hospital care. The goal of this assignment will be to build a model to predict impatient mortality an determine what factors contribute a increased risk of death during hospitalization. 
 
   The data that will be used in this assignment consists of a random subset of 200,000 patients from the 2012 National Impatient Sample. The data was taken from the Healthcare Cost and Ultilization Project (HCUP), which is the largest collection of hospital care data in the United States. The data was taken from discharge records from all hospitals that are participating with the HCUP, and use state guidelines to help identify the hospitals that qualify for the data collection process. 47 states and the District of Columbia participate in the NIS, and data is available for hospitals in those states. The outcome of interest is the inpatient mortality, of whether the patient died during the period of hospitalization. Features such as patient demographic, severity of disease, risk of mortality, and comorbidities were incorpated to determine if a patient was likely to die during hospitalization. This can be used to identify features that increase the risk of patient mortality in hospitals and seek to prevent such deaths in the future. 
 
-1. Describe the problem explaining in particular why prediction is of primary interest (inference could also be of interest but there has to be a good reason for wanting to predict a particular outcome)
 
-2. Describe the data (e.g. data source, data collection, outcome of interest, available features, sample size, missing data, etc.)
-
-### Methods
+## __Methods__
 
 First the relevant features to the outcome of interest was sorted out from the 175 original features that were present. 
 
@@ -85,14 +82,9 @@ summary(refine_data)
 
 ```
 
-1. Describe any data pre-processing steps (e.g. cleaning, recoding, variable transformation, dealing with missing data, selection of features to be included in your models, etc)
 
 Out of the 175 possible features that were present in the original dataset, only 44 variables were selected to be included in analysis and model building. These 44 include data regarding patient demographics (age, race, gender), comorbidities (such as alcohol abuse and COPD), and the risks of patient mortality. Each variable was examined and was made into factor variables as was appropriate. A majority of the features were converted into dummy variables, however some remained as strings and integers. In examining the missing data, there was less than 1% of the total sample size that was missing from the target variable, whether the patient died. Because the sample was small compared to the dataset, the missing values of the target variable were removed before the analysis.
 
-2. Briefly describe the Machine learning methods you will be using and why they are appropriate for your data (e.g. given the sample size and dimensionality of your training data, are you more concerned about bias or variance?)  You should try and compare at least 3 distinct appropriate methods.
-
-
-3. Describe how you are splitting the data into testing and training and any resampling strategy used for comparing methods, tuning parameters, and/or model/feature selection.
 
 ```{r, include = FALSE}
 #make task for log reg 
@@ -170,10 +162,14 @@ roc_glm_train <- roc(forward_log_data[log_train,]$DIED,predict_prob_train, ci = 
 roc_glm_test <- roc(forward_log_data[log_test, ]$DIED,predict_prob_test, ci = TRUE, of = 'auc')
 ```
 
+K-fold cross validation will be used to reduce the error that comes from different training/testing splits. The resulting misclassification error from the k-fold cross validation will be compared with the misclassification error from the initial training/testing split. 
 
 ### __Balanced Random Forests__
 
-The data itself is very unbalanced, with 184,598 patients that were successfully discharged compared to the 3,412 that died in the hospital. This could lead to an optimistically low misclassification error. Therefore, balanced random forests will be used to help balance the two binary outcomes. 
+The data itself is very unbalanced, with 184,598 patients that were successfully discharged compared to the 3,412 that died in the hospital. This could lead to an optimistically low misclassification error. Therefore, balanced random forests will be used to help balance the two binary outcomes and correct over optomistic misclassification errors. 
+
+I will be using all of the 44 variables that were selected form the original dataset in the balanced random forest model. All of the variables are included because the random forest model will tune the parameters and adjust the model according to which variables are considered important. The variable importance plot generated from the balanced random forest model will be compared to the variables that were considered important in the forward selection algorithm used in the logistic regression. The AUC will be used as a performance metric as the goal of the model is to correctly predict patient mortality. 
+
 
 ```{r,include = FALSE}
 library(randomForest)
@@ -182,7 +178,7 @@ library(randomForest)
 data_rf <- randomForest(DIED~.,data = refine_data[log_train, ],
                         mtry = sqrt(44),
                         ntree = 500,
-                        strata = refine_data$DIED,
+                        strata = refine_data$DIED[log_train],
                         sampsize = c(2274,2274))
 
 data_rf
@@ -199,18 +195,36 @@ rf_roc_test <- roc(refine_data[log_test, ]$DIED,rf_predict_test[,1])
 
 auc(rf_roc_test)
 ci(rf_roc_test)
+
 ```
 
 ### __Lasso Regression__
+
+Lasso regression will also be used to build a predictive model for determining patient mortality. Lasso regression was chosen over ridge regression because it is likely that only a small number of predictors will be significant in determining patient mortality than the all of the features that we have available. The regression model itself will chose which variables are important and act similarly to a feature selection algorithm. Therefore, we will continue to increase the tuning parameter to determine which parameters are important in determining patient mortality. 
+
+Cross validation will be used to tune the parameters in the LASSO regression and the misclassification error and AUC will be calculated to compare the performance o the LASSO regression model with the logistic regression and balanced random forest model. 
 
 
 ```{r,include = FALSE}
 library(glmnet)
 
-x <- refine_data$DIED
-y <- model.matrix(refine_data$DIED~., data = refine_data)[,-1]
+glmnet.data <- refine_data
+glmnet.data$DIED <- as.numeric(refine_data$DIED)
 
-#dat_CVlasso <- cv.glmnet(x,y,family = "gaussian",alpha = 1)
+y <- refine_data$DIED
+x <- model.matrix(refine_data$DIED~., data = refine_data)[, -1]
+
+dat_CVlasso <- cv.glmnet(x,y,family = "binomial",alpha = 1, type.measure = "auc")
+
+dat_CVlasso_coef <- coef(dat_CVlasso)
+round(dat_CVlasso_coef,2)
+
+auc_lasso <- max(dat_CVlasso$cvm)
+```
+
+
+
+```{r, include = FALSE}
 
 learn_CV_lasso <- makeLearner("classif.cvglmnet",
                               fix.factors.prediction = TRUE,
@@ -230,60 +244,95 @@ data_CV_lasso_min_lnr<- makeLearner("classif.glmnet",
                                     alpha = 1,
                                     lambda = lambda_min)
 
+data_CV_lasso_predict <- predict(data_CV_lasso_train, task = data_tsk)
 
+performance(data_CV_lasso_predict, measures = mmce)
 ```
 
 
 
-### Results
-1. Present key summaries (table and/or plots, but plots preferred when both available) of your data (e.g. class frequencies if a classification problem)
+## __Results__
+
+### __Logistic Regression__:
 
 
-
-2. Report training, validation/cross-validation, and test errors. Present cross-validation plots for tuning parameters if available. Report variable importance (e.g. p-values, model coefficients, Random forest and boosting variable importance).
-
-### __Logistic Regression__
+Below is the AUC and associated 95% Confidence Interval for the logistic regression on the training data. 
 
 ```{r, echo = FALSE}
 auc(roc_glm_train)
 ci(roc_glm_train)
+```
 
+Below is the AUC and associated 95% confidence interval for the logistic regression on the testing data. 
+
+```{r, echo = FALSE}
 auc(roc_glm_test)
 ci(roc_glm_test)
 ```
 
+The plot below shows the ROC curve for both the training and testing data for the logistic regression model on patient mortality. 
+
 ```{r, echo = FALSE}
-plot(roc_glm_train, lty = 2, lwd = 2, col = 'red4',cex.axis = 1.3, cex.lab = 1.3)
-lines(roc_glm_test,lty = 2, lwd = 2, col = 'blue4', cex.axis = 1.3, cex.lab = 1.3)
-legend("bottomright", legend = c("Train","Test"), col = c('red4','blue4'),lty = 2)
-title(main = "ROC Curve for Patient Mortality (Logistic Regression)")
+plot(roc_glm_train, lty = 1, lwd = 2, col = 'red4',cex.axis = 1.3, cex.lab = 1.3,main = "ROC Curve for Patient Mortality (Logistic Regression)")
+lines(roc_glm_test,lty = 1, lwd = 2, col = 'blue4', cex.axis = 1.3, cex.lab = 1.3)
+legend("bottomright", legend = c("Train","Test"), col = c('red4','blue4'),lty = 1)
 ```
 
 
+The table below shows the parameter estimates and the associated p-values for the logistic regression. The risk of mortality variable is statistically significant across almost all of its factor levels, and the length of stay variable is also statistically significant. The race variable is statistically significant only if the individual is Black. However, the parameter estimates for Race and Length of Stay are not very large compared to that of the Risk Mortality, indicating that the Risk Mortality has the highest influence in determining the probability of patient mortality.
+
+```{r, echo = FALSE}
+coef(summary(data_glm))[ ,c(1,4)]
+```
 
 
 ### __Balanced Random Forests__: 
 
 ```{r, echo = FALSE}
-plot(rf_roc_train,lwd = 2, col = 'red4',cex.axis = 1.3, cex.lab = 1.3)
+auc(rf_roc_train)
+ci(rf_roc_train)
+```
+
+```{r, ehco = FALSE}
+auc(rf_roc_test)
+ci(rf_roc_test)
+
+```
+
+The plot below shows the ROC curve for both the training and testing data for the balanced random forest method in predicting patient mortality. 
+
+```{r, echo = FALSE}
+plot(rf_roc_train,lwd = 2, col = 'red4',cex.axis = 1.3, cex.lab = 1.3, main = "ROC Curve for Patient Mortality (Balanced Random Forest)")
 lines(rf_roc_test, lwd = 2, col = 'blue4', cex.axis = 1.3, cex.lab = 1.3)
 legend("bottomright", legend = c("Train","Test"), col = c('red4','blue4'),lty = 1)
-title(main = "ROC Curve for Patient Mortality (Balanced Random Forest)")
 ```
+
+Below is the variable importance in predicting Patient Mortality using the balanced random forests method. This indicates that the Risk Mortality and the Severity of the disease are the most important variables in predicting patient mortality. Other significant variables include age and the number of diagnoses coded on the patient's health record. 
 
 ```{r, echo = FALSE}
 varImpPlot(data_rf, cex = 0.7, pt.cex = 1.2, n.var = 20, pch = 16, col = 'red4', main = "Variable Importance for Patient Mortality")
-
 ```
 
+### __Lasso Regression__
 
+Below is the cross-validated AUC for the LASSO regression model in predicting patient mortality. 
 
+```{r, echo = FALSE}
+auc_lasso
+```
 
-4. If applicabble, describe any model/feature selection used. 
+Below is the cross-validated misclassification error for the LASSO regression model in predicting patient mortality. 
 
-4. If applicabble, describe any tuning parameters and how you will be tuning them. 
+```{r, echo = FALSE}
+performance(data_CV_lasso_predict, measures = mmce)
+```
 
-5. Describe what performance metric(s) you will be using and why.
+Below is the plot of the cross-validated tuning process for the regression model. 
+
+```{r, echo = FALSE}
+plot(dat_CVlasso,cex.lab = 1, cex.axis = 1)
+```
+
 
 
 ### Conclusions/discussion
