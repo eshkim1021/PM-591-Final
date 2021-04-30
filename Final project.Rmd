@@ -1,6 +1,5 @@
 ---
-title: "Final project"
-date: "Due April 30, 2021"
+title: "PM 591 Final project"
 output:
   pdf_document: default
   html_document: default
@@ -135,7 +134,7 @@ log_for_predict <- predict(log_for_train, task = log_for_tsk, subset = log_test)
 
 calculateROCMeasures(log_for_predict)
 
-performance(log_for_predict, measures = list(mmce,acc))
+log_for_perform <- performance(log_for_predict, measures = list(mmce,acc))
 
 for_log_crossval <- crossval(data_learn_log,log_for_tsk,iters = 10L, stratify = TRUE, measures = mmce)
 
@@ -327,7 +326,7 @@ Below is the cross-validated misclassification error for the LASSO regression mo
 performance(data_CV_lasso_predict, measures = mmce)
 ```
 
-Below is the plot of the cross-validated tuning process for the regression model. 
+Below is the plot of the cross-validated tuning process for the regression model. The numnber of coefficents in the top of the graph is greater than the 44 variables in the data because of factor variables that have multiple levels. 
 
 ```{r, echo = FALSE}
 plot(dat_CVlasso,cex.lab = 1, cex.axis = 1)
@@ -336,10 +335,12 @@ plot(dat_CVlasso,cex.lab = 1, cex.axis = 1)
 
 
 ### Conclusions/discussion
-Discuss whether and why the prediction model(s) developed achieved sufficient high accuracy to be usefully deployed to predict new observations.
 
-#Additional notes for those using the NIS data
-The data provided consists of a random subset of 200,000 patients from 2012 from the National Impatient Sample (NIS) data collected by the Healthcare Cost and Utilization Project (HCUP). You can find information on the HCUP database at <https://www.hcup-us.ahrq.gov>. You can choose to develop a model to predict death during hospitalization also known as impatient mortality (variable DIED in the dataset) or hospital length of stay (variable LOS in the dataset). For extra credit, you can also choose to predict both. The dataset has a relatively large number of variables. In the provided data dictionary I preselected variables (highlighted) which are both availabe (not all variables in the dictionary are available for 2012) which might be relevant for predicting impatient mortality and/or hospital length of stay. Based on their description and additional info from the HCUP site you should choose which variables among the preselected ones you will consider as features/predictors. You don't have to use them all. There maybe variables that are redundant (capture pretty much the same info others already capture), variables that are too complex (e.g. categorical with way too many levels), or that based on your judgment are unlikely to be important. Be aware that the data is real and has not been pre-processed in any way and you will have to do some data cleaning. For example, you should carefully check the variables you consider as possible predictors for correctness of type (e.g. many numeric variables will be read in as factor variables when you use ``read.csv``), outliers, missing observations, nonsensical values, etc.
+Across all three prediction models, the AUC was above 0.90 indicated that the prediction models were more than adequate in correctly prediction patient mortality. Overall, all of the models indicated similar variables to be the most important in determining the probability of a patient dying in the hospital. These variables include the Risk of Mortality, the Severity of the Disease, the length of stay at the hospital, and age. Although there were concerns that the data was imbalanced, the results from the balanced random forests show an AUC similar to that of the logistic regression model and the LASSO regression. 
+
+  The advantage of the logistic regression is that the parameter estimates can be used to determine how influential statisitcally significant variables are in determining the probability of death. It is much more detailed, however, the forward selection algorithm in determine which features to include severly limits the scope of variables that was examined. The balanced random forest is not as detailed in its description of the relationships between the parameters and the outcome like logistic regression, but it takes into account for all of the variables present. Because of this, the variable importance plot gives a fuller picture of how all of the variables affect the probability of patient mortality. All of the variables that were considered statistically significant in the logistic regression were considered important in the balanced random forest model, but there were some variables that the forward selection algorithm did not include. The variables that were considered important by the LASSO regression model aligned with what was considered important by the balanced random forest, although cross-validated tunning plot for LASSO regression also shows that the model performs the best with around 59 or 37 non-zero coefficient estimates. T
+  
+  Overall, all three models show similar results in that the Risk Mortality variable was considered to be the most important in predicting whether the patient would die during hospitalization. Other key variables include the severity of the disease, length of stay at the hospital, and the number of diagnoses on the patient's record. As the AUC for all three models were very high and the misclassification error was low, I am confident that we can use these models to predict patient mortality in hospitals. 
 
 
 
