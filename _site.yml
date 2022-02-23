@@ -1,0 +1,10 @@
+title: "Predicting Paitent Mortality During Hospitalization Using the National Inpatient Sample (NIS)"
+output_dir: "."
+navbar:
+  title: "Predicting Paitent Mortality During Hospitalization Using the National Inpatient Sample (NIS)"
+  left:
+    -text: "Home"
+     href: index.pdf
+  output:
+    html_document:
+      theme: cosmo
