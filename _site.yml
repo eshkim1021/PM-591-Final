@@ -4,7 +4,7 @@ navbar:
   title: "Predicting Paitent Mortality During Hospitalization Using the National Inpatient Sample (NIS)"
   left:
     -text: "Home"
-     href: index.pdf
+     href: index.html
   output:
     html_document:
       theme: cosmo
