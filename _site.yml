@@ -5,7 +5,7 @@ navbar:
   left:
     -text: "Home"
      href: index.html
-    -text: 'Full Report PDF"
+    -text: "Full Report PDF"
      href: index.pdf
   output:
     html_document:
